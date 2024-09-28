@@ -25,7 +25,7 @@ model.eval()
 visualizer = Visualizer(opt)
 
 
-screen_width, screen_height = 1920, 600
+screen_width, screen_height = 1920, 1080
 
 def resize_with_aspect_ratio(img, screen_width, screen_height):
     h, w, _ = img.shape
@@ -61,6 +61,9 @@ cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 image_index = 0
 prev_img = None
 prev_image_path = None
+
+if not os.path.exists(opt.results_dir):
+    os.makedirs(opt.results_dir)
 
 while True:
     for i, data_i in enumerate(dataloader):
