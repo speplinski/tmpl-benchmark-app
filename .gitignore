@@ -1,1 +1,9 @@
+checkpoints/
+results/
+.idea/
+__pycache__/
+*.tar.gz
+*.zip
+*.pkl
+*.pyc
 .DS_Store

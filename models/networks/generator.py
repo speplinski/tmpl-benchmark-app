@@ -1,4 +1,5 @@
 """
+Copyright (C) 2019 NVIDIA Corporation.  All rights reserved.
 Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
 """
 
@@ -96,8 +97,6 @@ class SPADEGenerator(BaseNetwork):
            self.opt.num_upsampling_layers == 'most':
             x = self.up(x)
 
-        #x = self.up(x) ### test
-        
         x = self.G_middle_1(x, seg)
 
         x = self.up(x)
@@ -108,8 +107,6 @@ class SPADEGenerator(BaseNetwork):
         x = self.up_2(x, seg)
         x = self.up(x)
         x = self.up_3(x, seg)
-        
-        #x = self.up(x) ### test
 
         if self.opt.num_upsampling_layers == 'most':
             x = self.up(x)

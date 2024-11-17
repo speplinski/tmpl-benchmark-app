@@ -1,4 +1,5 @@
 """
+Copyright (C) 2019 NVIDIA Corporation.  All rights reserved.
 Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
 """
 
@@ -126,9 +127,6 @@ class Pix2PixModel(torch.nn.Module):
             instance_edge_map = self.get_edges(inst_map)
             input_semantics = torch.cat((input_semantics, instance_edge_map), dim=1)
 
-        print(f"Input semantics shape: {input_semantics.size()}")
-        print(f"Real image shape: {data['image'].size()}")
-
         return input_semantics, data['image']
 
     def compute_generator_loss(self, input_semantics, real_image):
@@ -207,10 +205,6 @@ class Pix2PixModel(torch.nn.Module):
     def discriminate(self, input_semantics, fake_image, real_image):
         fake_concat = torch.cat([input_semantics, fake_image], dim=1)
         real_concat = torch.cat([input_semantics, real_image], dim=1)
-
-        #print(f"Input semantics shape: {input_semantics.shape}")
-        #print(f"Real image shape: {real_image.shape}")
-        #print(f"Fake image shape: {fake_image.shape}")
 
         # In Batch Normalization, the fake and real images are
         # recommended to be in the same batch to avoid disparate
