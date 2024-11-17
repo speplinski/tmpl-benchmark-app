@@ -52,6 +52,10 @@ Once the dataset is ready, the result images can be generated using pretrained m
 
 3. The outputs images are stored at `./results/` by default.
 
+    ![Benchmark](assets/benchmark.png?raw=true)
+
+    **Note:** The benchmark above serves as a reference for performance. The processing times shown (inference, transformation, and saving) should not be significantly slower on comparable hardware.
+
 ## Code Structure
 
 - `gen.py`: the entry point for generating.
