@@ -29,8 +29,8 @@ class CustomDataset(Pix2pixDataset):
         parser.set_defaults(ngf=72)
         parser.set_defaults(gpu_ids="0,1")
         parser.set_defaults(batchSize=4)
-        parser.set_defaults(label_dir='datasets/tmpl_simulation_masks_spn_white-dunes_0145_s580/masks')
-        parser.set_defaults(image_dir='datasets/tmpl_simulation_masks_spn_white-dunes_0145_s580/images')
+        parser.set_defaults(label_dir='datasets/simulation_masks_spn_white-dunes_0145_s580/masks')
+        parser.set_defaults(image_dir='datasets/simulation_masks_spn_white-dunes_0145_s580/images')
 
         parser.add_argument('--instance_dir', type=str, default='', help='path to the directory that contains instance maps. Leave black if not exists')
         return parser
