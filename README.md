@@ -10,7 +10,7 @@ Clone this repository and install the required dependencies (Python 3+ and PyTor
 
 ```bash
 git clone https://github.com/speplinski/tmpl-benchmark-app.git
-cd tmpl/
+cd tmpl-benchmark-app/
 pip install -r requirements.txt
 ```
 
@@ -25,7 +25,7 @@ For TMPL, the datasets must be downloaded beforehand. A script has been provided
 ```bash
 cd datasets/
 ./download_dataset.sh
-cd ../
+cd ..
 ```
 
 This script will automatically download and extract the required dataset files and organize them in the appropriate structure under the `datasets/` directory.
@@ -41,7 +41,7 @@ Once the dataset is ready, the result images can be generated using pretrained m
     ```bash
     cd checkpoints
     ./download_ckpts.sh
-    cd ../
+    cd ..
     ```
 
 2. **Generate images**
