@@ -9,7 +9,7 @@ This application evaluates the performance of hardware configurations (GPUs) for
 Clone this repository and install the required dependencies (Python 3+ and PyTorch 1.0):
 
 ```bash
-git clone https://github.com/speplinski/tmpl.git
+git clone https://github.com/speplinski/tmpl-benchmark-app.git
 cd tmpl/
 pip install -r requirements.txt
 ```
