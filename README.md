@@ -1,15 +1,16 @@
 # The Most Polish Landscape (Semantic Image Synthesis)
 
+This application evaluates the performance of hardware configurations (GPUs) for the installation *The Most Polish Landscape*. By benchmarking the processing times for tasks like inference, image transformation, and saving, it ensures the selected hardware meets the installation's performance requirements.
+
+---
+
 ## Installation
 
-Clone this repo.
+Clone this repository and install the required dependencies (Python 3+ and PyTorch 1.0):
+
 ```bash
 git clone https://github.com/speplinski/tmpl.git
 cd tmpl/
-```
-
-This code requires PyTorch 1.0 and python 3+. Please install dependencies by
-```bash
 pip install -r requirements.txt
 ```
 
@@ -33,7 +34,9 @@ This script will automatically download and extract the required dataset files a
 
 Once the dataset is ready, the result images can be generated using pretrained models.
 
-1. Navigate to the `checkpoints` directory and run the provided script to download and extract the pretrained models. This script will automatically download the pretrained models archive and extract its contents into the `checkpoints/` directory.
+1. **Download Pretrained Models**
+
+    Navigate to the `checkpoints` directory and run the provided script to download and extract the pretrained models. This script will automatically download the pretrained models archive and extract its contents into the `checkpoints/` directory.
 
     ```bash
     cd checkpoints
@@ -41,20 +44,28 @@ Once the dataset is ready, the result images can be generated using pretrained m
     cd ../
     ```
 
-2. Generate images using the pretrained model.
+2. **Generate images**
+
+    Use the pretrained model to generate images.
+    
     ```bash
     python3 gen.py \
       --batchSize 4 \
       --gpu_ids 0,1 \
       --which_epoch 80
     ```
-    If you have only one GPU, set `--gpu_ids 0` and adjust `--batchSize` to fit memory constraints.
 
-3. The outputs images are stored at `./results/` by default.
+    **Note for Single-GPU Systems**
+    If there is only one GPU, set `--gpu_ids 0` and adjust `--batchSize` to fit memory constraints. The application should generate at least 4 images per second to meet the performance requirements.
+
+3. **Output Location**
+
+    The generated images are stored in `./results/` by default.
 
     ![Benchmark](assets/benchmark.png?raw=true)
 
-    **Note:** The benchmark above serves as a reference for performance. The processing times shown (inference, transformation, and saving) should not be significantly slower on comparable hardware.
+    **Performance Benchmark**
+    The benchmark above serves as a reference for performance. The processing times shown (inference, transformation, and saving) should not be significantly slower on comparable hardware.
 
 ## Code Structure
 
@@ -67,7 +78,13 @@ Once the dataset is ready, the result images can be generated using pretrained m
 
 ## Options
 
-This code repo contains many options. Some options belong to only one specific model, and some options have different default values depending on other options. To address this, the `BaseOption` class dynamically loads and sets options depending on what model, network, and datasets are used. This is done by calling the static method `modify_commandline_options` of various classes. It takes in the`parser` of `argparse` package and modifies the list of options. For example, since TMPL dataset contains a special label "unknown", it sets `--contain_dontcare_label` automatically at `data/tmpl_dataset.py`. You can take a look at `def gather_options()` of `options/base_options.py`, or `models/network/` to get a sense of how this works.
+This repository contains many configurable options. Some are model-specific, while others have different default values depending on the dataset or network in use.
+
+To dynamically adjust options based on the dataset or model, the `BaseOption` class calls the static method `modify_commandline_options`. This modifies the argparse parser with appropriate settings.
 
 ## Acknowledgments
-This code borrows heavily from pix2pixHD and SPADE. We thank Jiayuan Mao for his Synchronized Batch Normalization code and Taesung Park, Ming-Yu Liu, Ting-Chun Wang, and Jun-Yan Zhu for Semantic Image Synthesis with Spatially-Adaptive Normalization.
+
+This code borrows heavily from `pix2pixHD` and `SPADE`. Special thanks to:
+
+- Jiayuan Mao for his Synchronized Batch Normalization code.
+- Taesung Park, Ming-Yu Liu, Ting-Chun Wang, and Jun-Yan Zhu for Semantic Image Synthesis with Spatially-Adaptive Normalization.
