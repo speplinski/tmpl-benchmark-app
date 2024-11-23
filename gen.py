@@ -12,10 +12,15 @@ from models.pix2pix_model import Pix2PixModel
 from util.visualizer import Visualizer
 from util import html
 
+from models.networks.sync_batchnorm import DataParallelWithCallback
 
 opt = TestOptions().parse()
 dataloader = data.create_dataloader(opt)
 model = Pix2PixModel(opt)
+if len(opt.gpu_ids) > 1:
+    model = DataParallelWithCallback(model, device_ids=opt.gpu_ids)
+else:
+    model = model.to(f"cuda:{opt.gpu_ids[0]}")
 model.eval()
 
 output_dir = opt.results_dir
