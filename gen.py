@@ -1,127 +1,188 @@
 import os
 import time
-import glob
 import numpy as np
-from PIL import Image
-from collections import OrderedDict
-import data
+import cv2
 import torch
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 from options.test_options import TestOptions
 from models.pix2pix_model import Pix2PixModel
-from util.visualizer import Visualizer
-from util import html
 from models.networks.sync_batchnorm import DataParallelWithCallback
+import fcntl
 
-def process_batch(model, data_i, output_dir, counter):
-    """Process a single batch of images"""
-    total_start_time = time.time()
-    torch.cuda.synchronize()
-    iter_start_time = time.time()
+def setup_distributed(gpu_id, world_size):
+    """Setup distributed training"""
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+    
+    dist.init_process_group(
+        backend='nccl',
+        init_method='env://',
+        world_size=world_size,
+        rank=gpu_id
+    )
+    
+    torch.cuda.set_device(gpu_id)
 
-    try:
-        if isinstance(model, DataParallelWithCallback):
-            generated = model.module(data_i, mode='inference')
-        else:
-            generated = model(data_i, mode='inference')
-    except Exception as e:
-        print(f"Error during inference: {str(e)}")
-        return counter
-
-    torch.cuda.synchronize()
-    iter_time = time.time() - iter_start_time
-    print(f"\nTime for model inference: {iter_time:.4f} seconds")
-
-    for b in range(generated.shape[0]):
+def get_next_batch(rank, batch_size, input_dir, output_dir, lock_file):
+    """Get next batch of unprocessed files for this GPU"""
+    files = []
+    next_file = 1
+    
+    with open(lock_file, 'a+') as f:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
         try:
-            image_name = f"{counter}"
-            print(f"Processing image... {image_name}")
+            f.seek(0)
+            processed = set(int(x.strip()) for x in f.readlines() if x.strip())
+            
+            while len(files) < batch_size:
+                # Skip processed files
+                while next_file in processed:
+                    next_file += 1
+                
+                # Check if file exists
+                input_path = os.path.join(input_dir, f"{next_file}.bmp")
+                if not os.path.exists(input_path):
+                    break
+                
+                files.append(next_file)
+                f.write(f"{next_file}\n")
+                f.flush()
+                next_file += 1
+                
+        finally:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+    
+    return files if files else None
 
-            transform_start_time = time.time()
-            image_tensor = generated[b].detach().cpu()
-            image_array = ((image_tensor.numpy() * 0.5 + 0.5) * 255).clip(0, 255).astype(np.uint8)
+def load_masks_batch(file_nums, input_dir, output_dir):
+    """Load a batch of masks."""
+    masks = []
+    valid_files = []
+    
+    for file_num in file_nums:
+        input_path = os.path.join(input_dir, f"{file_num}.bmp")
+        mask = cv2.imread(input_path, cv2.IMREAD_GRAYSCALE)
+        if mask is not None:
+            masks.append(mask)
+            valid_files.append(file_num)
+    
+    if not masks:
+        return None, []
+        
+    masks_tensor = torch.from_numpy(np.stack(masks)).unsqueeze(1).float()
+    
+    batch_size = len(masks)
+    H, W = masks[0].shape
+    
+    return {
+        'label': masks_tensor,
+        'instance': torch.zeros(batch_size),
+        'image': torch.zeros(batch_size, 3, H, W),
+        'path': [os.path.join(input_dir, f"{num}.bmp") for num in valid_files]
+    }, valid_files
 
-            if image_array.shape[0] == 3:
-                image_array = image_array.transpose(1, 2, 0)
+def save_batch_images(image_arrays, file_nums, output_dir):
+    """Save a batch of images."""
+    for img, file_num in zip(image_arrays, file_nums):
+        output_path = os.path.join(output_dir, f"{file_num:09}.jpg")
+        cv2.imwrite(output_path, cv2.cvtColor(img, cv2.COLOR_RGB2BGR), 
+                    [cv2.IMWRITE_JPEG_QUALITY, 95])
 
-            transform_time = time.time() - transform_start_time
-            print(f"Time for transformation to image array: {transform_time:.4f} seconds")
+def process_batch(model, file_nums, input_dir, output_dir, gpu_id):
+    """Process a batch of images."""
+    try:
+        # Load batch
+        data_i, valid_files = load_masks_batch(file_nums, input_dir, output_dir)
+        if data_i is None or not valid_files:
+            return True
+            
+        # Move to specific GPU
+        data_i = {k: v.cuda(gpu_id) if isinstance(v, torch.Tensor) else v 
+                 for k, v in data_i.items()}
+            
+        # Generate
+        with torch.no_grad(), torch.cuda.amp.autocast():
+            generated = model.module(data_i, mode='inference') if hasattr(model, 'module') \
+                      else model(data_i, mode='inference')
+            
+        # Process and save
+        image_arrays = []
+        for i in range(len(valid_files)):
+            img = ((generated[i].cpu().numpy() * 0.5 + 0.5) * 255).clip(0, 255).astype(np.uint8)
+            if img.shape[0] == 3:
+                img = img.transpose(1, 2, 0)
+            image_arrays.append(img)
+            
+        save_batch_images(image_arrays, valid_files, output_dir)
+        print(f"GPU {gpu_id}: Processed files {valid_files}")
+        
+        # Clear memory
+        del generated, data_i, image_arrays
+        torch.cuda.empty_cache()
+        
+        return True
+        
+    except Exception as e:
+        print(f"Error in batch processing on GPU {gpu_id}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
 
-            output_path = os.path.join(output_dir, f"{image_name}.bmp")
-            save_start_time = time.time()
-            Image.fromarray(image_array, mode="RGB").save(output_path, format="BMP")
-            save_time = time.time() - save_start_time
-            print(f"Time to save image: {save_time:.4f} seconds")
-
-            counter += 1
-
-            total_time = time.time() - total_start_time
-            print(f"Total time for processing image: {total_time:.4f} seconds")
-        except Exception as e:
-            print(f"Error processing image {counter}: {str(e)}")
-            counter += 1
-            continue
-
-    return counter
-
-def main():
-    opt = TestOptions().parse()
-
-    # Create output directory if it doesn't exist
-    output_dir = opt.results_dir
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
+def process_on_gpu(rank, world_size, opt):
+    """Process images on a single GPU."""
+    setup_distributed(rank, world_size)
+    
     # Initialize model
     model = Pix2PixModel(opt)
     model.eval()
-
-    if len(opt.gpu_ids) > 1:
-        model = DataParallelWithCallback(model, device_ids=opt.gpu_ids)
-    else:
-        model = model.to(f"cuda:{opt.gpu_ids[0]}")
-
-    processed_count = 0
-    last_dataloader_size = 0
-
-    while True:
-        try:
-            # Create new dataloader to check for new files
-            dataloader = data.create_dataloader(opt)
-            current_dataloader_size = len(dataloader.dataset)
-
-            # If no new files and we've processed everything, wait
-            if current_dataloader_size == last_dataloader_size and processed_count >= current_dataloader_size:
-                print("Waiting for new data...")
+    model.cuda(rank)
+    model = DDP(model, device_ids=[rank])
+    
+    # Create lock file
+    lock_file = os.path.join(opt.results_dir, 'processed_files.txt')
+    
+    try:
+        while True:
+            # Get next batch of files
+            batch_files = get_next_batch(rank, opt.batchSize, 
+                                       opt.label_dir, opt.results_dir, lock_file)
+            
+            if batch_files is None:
                 time.sleep(1)
                 continue
+                
+            # Process batch
+            success = process_batch(model, batch_files, opt.label_dir, opt.results_dir, rank)
+            
+            if not success:
+                print(f"GPU {rank}: Failed to process batch {batch_files}, retrying...")
+                time.sleep(1)
+                
+    except KeyboardInterrupt:
+        print(f"\nStopping GPU {rank}...")
+    
+    finally:
+        # Cleanup
+        dist.destroy_process_group()
+        del model
+        torch.cuda.empty_cache()
 
-            # Process only new files
-            for i, data_i in enumerate(dataloader):
-                if processed_count >= current_dataloader_size:
-                    break
-
-                # Skip already processed batches
-                if i * opt.batchSize < processed_count:
-                    continue
-
-                if i * opt.batchSize >= opt.how_many:
-                    break
-
-                # Process batch
-                counter = processed_count + 1
-                try:
-                    counter = process_batch(model, data_i, output_dir, counter)
-                    processed_count = counter - 1
-                except Exception as e:
-                    print(f"Error processing batch {i}: {str(e)}")
-                    continue
-
-            last_dataloader_size = current_dataloader_size
-
-        except Exception as e:
-            print(f"Error in main loop: {str(e)}")
-            time.sleep(1)
-            continue
+def main():
+    opt = TestOptions().parse()
+    os.makedirs(opt.results_dir, exist_ok=True)
+    
+    # Initialize lock file
+    lock_file = os.path.join(opt.results_dir, 'processed_files.txt')
+    open(lock_file, 'a').close()  # Create if doesn't exist
+    
+    world_size = len(opt.gpu_ids)
+    
+    if world_size > 1:
+        import torch.multiprocessing as mp
+        mp.spawn(process_on_gpu, args=(world_size, opt), nprocs=world_size)
+    else:
+        process_on_gpu(0, 1, opt)
 
 if __name__ == "__main__":
     main()
